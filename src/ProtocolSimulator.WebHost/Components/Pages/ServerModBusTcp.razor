@@ -1,0 +1,650 @@
+﻿@page "/ServerModBusTcp"
+
+@inject ServerService ServerService
+@inject NotificationService NotificationService
+@inject DialogService DialogService
+@inject ClipboardService ClipboardService
+
+@code {
+    public bool Deleted = false;
+
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "id")]
+    public int ServerId { get; set; }
+
+    [CascadingParameter]
+    public Layout? Layout { get; set; }
+
+    public ServerModel ServerModel { get; set; }
+
+    public ModbusTcpService ModbusTcpService { get; set; }
+
+    public const string ButtonStyleCss = "min-width: 100px;";
+
+    public const string FormStyleCss = ButtonStyleCss + "width: 100px; height: 56px;";
+
+    private static readonly Dictionary<Type, Action<ModbusTcpService, ModbusVariableModel>> HoldingRegisterActions = new()
+    {
+        {
+            SimulatorDataTypes.UInt16, ModbusTcpService.SetUshortValue
+        },
+        {
+            SimulatorDataTypes.UInt32, ModbusTcpService.SetUintValue
+        },
+        {
+            SimulatorDataTypes.UInt64, ModbusTcpService.SetUlongValue
+        },
+        {
+            SimulatorDataTypes.Single, ModbusTcpService.SetFloatValue
+        },
+        {
+            SimulatorDataTypes.Double, ModbusTcpService.SetDoubleValue
+        },
+    };
+
+    public bool NotChecked;
+
+    public bool IsCheckedAll;
+
+    public int CountVariables;
+
+    public int PageSize = 100;
+
+    public object Selection;
+
+    public string ColumnsShowingText { get; set; } = "- отображаемых столбцов";
+
+    public bool IsLoading { get; set; }
+
+    public int ProgressBarValue { get; set; }
+
+    public delegate Task AsyncEventHandler(int value, bool isLoading);
+
+    public event AsyncEventHandler ProgressBarEvent;
+
+    public Variant Variant = Variant.Filled;
+
+    public IEnumerable<Type> DataTypes = new List<Type>
+    {
+        SimulatorDataTypes.Double,
+        SimulatorDataTypes.Single,
+        SimulatorDataTypes.UInt16,
+        SimulatorDataTypes.UInt32,
+        SimulatorDataTypes.UInt64
+    };
+
+    public LoadDataArgs LoadDataArgs = new();
+
+    public RadzenDataFilter<ModbusVariableModel> DataFilter = new();
+
+    public RadzenDataGrid<ModbusVariableModel> DataGrid = new();
+
+    public IEnumerable<int> PageSizeOptions = [5, 10, 25, 50, 100, 500];
+
+    public IEnumerable<ModbusVariableModel> FilteredVariables = [];
+
+    public HashSet<ModbusVariableModel> SelectedVariables = [];
+
+    public List<ModbusVariableModel> Variables = [];
+
+    public IModbusTcpServer Server => ModbusTcpService?.Server;
+
+    public async Task RunRendering()
+    {
+        await InvokeAsync(StateHasChanged);
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ModbusTcpService != null)
+        {
+            ModbusTcpService.SimulateEvent -= NotificationsReceived;
+        }
+
+        var (service, model) = await ServerService.GetModBusServer(ServerId);
+
+        if (service == null || model == null)
+        {
+            Deleted = true;
+
+            return;
+        }
+
+        ServerModel = model;
+
+        ModbusTcpService = service;
+
+        ModbusTcpService.SimulateEvent += NotificationsReceived;
+
+        await OnChange();
+
+        if (DataGrid.AllowVirtualization)
+            await DataGrid.RefreshDataAsync();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+    }
+
+    public async Task Execute(Func<Task> action)
+    {
+        await Task.Run(async () =>
+        {
+            IsLoading = true;
+            await action.Invoke();
+            await OnChange();
+            await UpdateServerCard();
+            IsLoading = false;
+        });
+    }
+
+    public async Task OnChange()
+    {
+        await SetCheckedAll(false);
+
+        await LoadData(LoadDataArgs);
+
+        ServerModel.IsSimulating = ModbusTcpService.SimulateRunning;
+
+        ServerModel.VariableCount = CountVariables;
+
+        NotChecked = SelectedVariables.Count == 0;
+
+        IsCheckedAll = SelectedVariables.Count == ModbusTcpService.Variables.Count;
+    }
+
+    public Task LoadData(LoadDataArgs args)
+    {
+        LoadDataArgs = args;
+
+        var query = ModbusTcpService
+            .Variables
+            .Values
+            .OrderBy(i => i.Address)
+            .AsQueryable();
+
+        query = query.Where(DataFilter);
+
+        CountVariables = query.Count();
+
+        if (args.Skip != null && args.Top != null)
+        {
+            FilteredVariables = query
+                .Skip(args.Skip.Value)
+                .Take(args.Top.Value)
+                .ToList();
+        }
+        else
+        {
+            FilteredVariables = query
+                .ToList();
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public async Task LoadDataAsync(LoadDataArgs args)
+    {
+        await Task.Yield();
+
+        LoadDataArgs = await Task.FromResult(args);
+
+        var query = ModbusTcpService
+            .Variables
+            .Values
+            .OrderBy(i => i.Address)
+            .AsQueryable();
+
+        query = query.Where(DataFilter);
+
+        CountVariables = await Task.FromResult(query.Count());
+
+        if (args.Skip != null && args.Top != null)
+        {
+            FilteredVariables = await Task.FromResult(query
+                .Skip(args.Skip.Value)
+                .Take(args.Top.Value)
+                .ToList());
+        }
+        else
+        {
+            FilteredVariables = await Task.FromResult(query
+                .ToList());
+        }
+    }
+
+    public async Task StopModbusServer()
+    {
+        await Execute(async () =>
+        {
+            await ServerService.StartStopServer(ServerModel);
+
+            if (ServerModel.IsSimulating)
+                await ServerService.StartStopStopSimulation(ServerModel);
+        });
+    }
+
+    public async Task StartModbusServer()
+    {
+        await Execute(async () =>
+        {
+            await ServerService.StartStopServer(ServerModel);
+
+            if (Server.IsRunning)
+            {
+                //await InitModbusData();
+            }
+            else
+            {
+                ServerModel.Status = ServerStatus.Error;
+
+                await ShowNotificationError("Не удалось запустить сервер, попрпобуйте сменить порт");
+            }
+        });
+    }
+
+    public Task ShowNotificationError(string message)
+    {
+        var notificationMessage = new NotificationMessage { Summary = "Ошибка:", Severity = NotificationSeverity.Error, Detail = message, Duration = 50000, CloseOnClick = true, Payload = DateTime.Now };
+
+        NotificationService.Notify(notificationMessage);
+
+        return Task.CompletedTask;
+    }
+
+    public Task ShowNotificationSuccess(string message)
+    {
+        var notificationMessage = new NotificationMessage { Summary = "Успешная операция:", Severity = NotificationSeverity.Success, Detail = message, Duration = 50000, CloseOnClick = true, Payload = DateTime.Now };
+
+        NotificationService.Notify(notificationMessage);
+
+        return Task.CompletedTask;
+    }
+
+    public async Task AddVariable(ModbusVariableModel model)
+    {
+        await Execute(async () =>
+        {
+            if (model.Value == null || !HoldingRegisterActions.TryGetValue(model.DataTypeNet,
+                    out var setHoldingRegister))
+            {
+                await ShowNotificationError("Такой тип данных не поддерживается");
+
+                return;
+            }
+
+            for (var i = 1U; i <= model.CloneCount; i++)
+            {
+                var newModel = new ModbusVariableModel
+                {
+                    Address = ModbusTcpService.NextAddress,
+                    DataTypeNet = model.DataTypeNet,
+                    Value = model.Value,
+                    Timestamp = DateTime.Now
+                };
+
+                var percentage = ((double)i / model.CloneCount) * 100;
+                ProgressBarValue = Convert.ToInt32(Math.Round(percentage, 0));
+                if (percentage - ProgressBarValue == 0.0d && ProgressBarValue % 10 == 0)
+                    ProgressBarEvent?.Invoke(ProgressBarValue, true);
+                setHoldingRegister(ModbusTcpService, newModel);
+
+                if (model.Simulated)
+                    ModbusTcpService.SimulationVariables.Add(newModel);
+            }
+            ProgressBarValue = 0;
+        });
+    }
+
+    public Task SettingsChanged(DataGridPickedColumnsChangedEventArgs<ModbusVariableModel> settings)
+    {
+        var count = settings.Columns.Count();
+
+        ColumnsShowingText = count < 5 ? "- отображаемых столбца" : "- отображаемых столбцов";
+
+        return Task.CompletedTask;
+    }
+
+    public Task SetChecked(bool isChecked, ModbusVariableModel variable)
+    {
+        if (isChecked)
+            SelectedVariables.Add(variable);
+        else
+            SelectedVariables.Remove(variable);
+
+        NotChecked = SelectedVariables.Count == 0;
+
+        IsCheckedAll = SelectedVariables.Count == ModbusTcpService.Variables.Count();
+
+        return Task.CompletedTask;
+    }
+
+    public Task SetCheckedAll(bool isChecked)
+    {
+        if (isChecked)
+            foreach (var variable in ModbusTcpService.Variables.Values)
+                SelectedVariables.Add(variable);
+        else
+            foreach (var variable in ModbusTcpService.Variables.Values)
+                SelectedVariables.Remove(variable);
+
+        NotChecked = SelectedVariables.Count == 0;
+
+        IsCheckedAll = SelectedVariables.Count == ModbusTcpService.Variables.Count;
+
+        return Task.CompletedTask;
+    }
+
+    public Task ChangeVariableValue(object value, ModbusVariableModel model)
+    {
+        if (!HoldingRegisterActions.TryGetValue(model.DataTypeNet,
+                out var holdingRegisterSetValue))
+        {
+            ShowNotificationError("Выбранный тип данных не поддерживается");
+            return Task.CompletedTask;
+        }
+
+        model.Value = value;
+        holdingRegisterSetValue(ModbusTcpService, model);
+
+        return Task.CompletedTask;
+    }
+
+    public async Task StartSimulation()
+    {
+        await Execute(async () =>
+        {
+            await ServerService.StartStopStopSimulation(ServerModel);
+        });        
+    }
+
+    public async Task StopSimulation()
+    {
+        await Execute(async () =>
+        {
+            await ServerService.StartStopStopSimulation(ServerModel);
+        });
+    }
+
+    public async Task OpenSimulationDialog()
+    {
+        await DialogService.OpenAsync<SimulationDialog>("Настроить симулятор",
+            new Dictionary<string, object>
+            {
+                {
+                    nameof(SimulationDialog.SimulationService), ModbusTcpService
+
+                },
+                {
+                    nameof(SimulationDialog.SimulationSettingsModel), ModbusTcpService.SimulationSettings
+                },
+            },
+            new DialogOptions
+            {
+                ShowClose = true,
+                Width = "auto"
+            }
+        );
+    }
+
+    public async Task NotificationsReceived()
+    {
+        await RunRendering();
+    }
+
+    public async Task OpenVariableDialog()
+    {
+        await Execute(async () =>
+        {
+            await DialogService.OpenAsync<ModbusVariableDialog>("Создать переменную",
+                new Dictionary<string, object>
+                {
+                    {
+                        nameof(ModbusVariableDialog.ServerModBusTcp), this
+                    },
+                    {
+                        nameof(ModbusVariableDialog.DataTypes), DataTypes
+                    },
+                },
+                new DialogOptions
+                {
+                    ShowClose = true,
+                    Width = "auto"
+                }
+            );
+        });
+    }
+
+    public Task SetCheckedSimulated(bool isChecked, ModbusVariableModel variable)
+    {
+        if (isChecked)
+            ModbusTcpService.SimulationVariables.Add(variable);
+        else
+            ModbusTcpService.SimulationVariables.Remove(variable);
+
+        return Task.CompletedTask;
+    }
+
+    public async Task DeleteVariables()
+    {
+        foreach (var variable in SelectedVariables)
+        {
+            ModbusTcpService.SimulationVariables.Remove(variable);
+            ModbusTcpService.Variables.Remove(variable.Address);
+        }
+
+        if (ModbusTcpService.Variables.Count == 0)
+        {
+            ModbusTcpService.NextAddress = 2;
+        }
+
+        SelectedVariables.Clear();
+
+        if (DataGrid.Visible)
+        {
+            await DataGrid.RefreshDataAsync();
+        }
+    }
+
+    public async Task InitModbusData()
+    {
+        await AddVariable(new ModbusVariableModel
+        {
+            DataTypeNet = SimulatorDataTypes.Single,
+            Value = 1,
+            Simulated = true
+        });
+        await AddVariable(new ModbusVariableModel
+        {
+            DataTypeNet = SimulatorDataTypes.Double,
+            Value = 1,
+            Simulated = true
+        });
+        await AddVariable(new ModbusVariableModel
+        {
+            DataTypeNet = SimulatorDataTypes.UInt16,
+            Value = 1,
+            Simulated = true
+        });
+        await AddVariable(new ModbusVariableModel
+        {
+            DataTypeNet = SimulatorDataTypes.UInt32,
+            Value = 1,
+            Simulated = true
+        });
+        await AddVariable(new ModbusVariableModel
+        {
+            DataTypeNet = SimulatorDataTypes.UInt64,
+            Value = 1,
+            Simulated = true
+        });
+    }
+
+    private async Task UpdateServerCard()
+    {
+        if (Layout != null)
+        {
+            await Layout.RefreshSidebarAsync();
+        }
+    }
+
+    public async Task OpenDuplicateDialog()
+    {
+        await Execute(async () =>
+        {
+            var result = await DialogService.OpenAsync<DuplicateServerDialog>("Дублирование сервера",
+                new Dictionary<string, object>
+                {
+                { nameof(DuplicateServerDialog.SourceServer), ServerModel },
+                { nameof(DuplicateServerDialog.OnDuplicate), EventCallback.Factory.Create<DuplicateResult>(this, HandleDuplicateResult) }
+                },
+                new DialogOptions
+                {
+                    ShowClose = true,
+                    Width = "600px",
+                    CloseDialogOnOverlayClick = false
+                }
+            );
+        });
+    }
+
+    private async Task HandleDuplicateResult(DuplicateResult result)
+    {
+        if (result != null && result.IsSuccess)
+        {
+            await ShowNotificationSuccess($"Создано {result.SuccessCount} копий сервера");
+            await UpdateServerCard();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+}
+
+<Loader IsLoading="@IsLoading" />
+
+<RadzenStack>
+    <RadzenCard>
+        <RadzenStack>
+            <RadzenLabel Style="font-size:larger; font-weight:bold;">
+                Управление сервером: @ServerModel.Name
+            </RadzenLabel>
+            <RadzenStack Orientation="Orientation.Horizontal">
+                <RadzenFormField Text="Порт" Variant="Variant.Flat" Style="@FormStyleCss">
+                    <RadzenNumeric TValue="int" Max="65535" @bind-value="@ServerModel.Port" Disabled="Server.IsRunning" />
+                </RadzenFormField>
+                <RadzenButton Click="StartModbusServer" ButtonStyle="ButtonStyle.Primary" Text="Запустить сервер" Visible="!Server.IsRunning" />
+                <RadzenButton Click="StopModbusServer" ButtonStyle="ButtonStyle.Warning" Text="Остановить сервер" Visible="Server.IsRunning" />
+                <RadzenButton Click="OpenVariableDialog" ButtonStyle="ButtonStyle.Primary" Text="Создать переменную" Disabled="!Server.IsRunning | ModbusTcpService.SimulateRunning" />
+                <RadzenButton Click="DeleteVariables" ButtonStyle="ButtonStyle.Danger" Text="Удалить переменную" Disabled="NotChecked | !Server.IsRunning | ModbusTcpService.SimulateRunning" />
+                <RadzenButton Click="OpenSimulationDialog" ButtonStyle="ButtonStyle.Primary" Text="Настроить симулятор" Disabled="ModbusTcpService.SimulateRunning | !Server.IsRunning" />
+                <RadzenButton Click="StartSimulation" ButtonStyle="ButtonStyle.Primary" Text="Запустить симулятор" Visible="!ModbusTcpService.SimulateRunning" Disabled="!Server.IsRunning" />
+                <RadzenButton Click="StopSimulation" ButtonStyle="ButtonStyle.Warning" Text="Остановить симулятор" Visible="ModbusTcpService.SimulateRunning" Disabled="!Server.IsRunning" />
+                <RadzenButton Click="OpenDuplicateDialog" ButtonStyle="ButtonStyle.Info" Text="Дублировать сервер" Disabled="!Server.IsRunning" Visible="Server.IsRunning" />
+            </RadzenStack>
+        </RadzenStack>
+    </RadzenCard>
+    <RadzenStack Orientation="Orientation.Horizontal" Visible="ModbusTcpService.Server.IsRunning" Style="height: calc(100vh - 250px);">
+        <RadzenCard Variant="Variant" Style="display:grid">
+            <RadzenDataGrid TItem="ModbusVariableModel"
+                            @ref="DataGrid" LoadData="@LoadDataAsync" Data="@FilteredVariables" Count="@CountVariables" AllowVirtualization="true"
+                            AllowPaging="false" AllowSorting="false" AllowColumnResize="true" ShowPagingSummary="true"
+                            PageSize="@PageSize" PageSizeOptions="@PageSizeOptions" PageSizeChanged="@(args => PageSize = args)"
+                            PageSizeText="" PagingSummaryFormat="Всего записей: {2}" EmptyText="Нет записей для отображения"
+                            PagerHorizontalAlign="HorizontalAlign.Center" PagerPosition="PagerPosition.Bottom" ColumnsShowingText="@ColumnsShowingText"
+                            PickedColumnsChanged="SettingsChanged" GridLines="DataGridGridLines.Both" Density="Density.Compact"
+                            AllowColumnPicking="true" ColumnsText="Нет выбранных столбцов" AllColumnsText="Выбрать все">
+
+                <Columns>
+                    <RadzenDataGridColumn TItem="ModbusVariableModel" Pickable="false" Resizable="false" Width="2rem" OrderIndex="1">
+                        <HeaderTemplate>
+                            <RadzenCheckBox TValue="bool" TriState="false" @bind-Value="@IsCheckedAll" Change="@(isChecked => SetCheckedAll(isChecked))" />
+                        </HeaderTemplate>
+                        <Template Context="item">
+                            <RadzenCheckBox TValue="bool" TriState="false" Value="@SelectedVariables.Contains(item)" Change="@(isChecked => SetChecked(isChecked, item))" />
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="ModbusVariableModel" ColumnPickerTitle="Симуляция" Resizable="false" Width="6rem" OrderIndex="6">
+                        <HeaderTemplate>
+                            <RadzenLabel Style="font-weight:bold;">
+                                Симуляция
+                            </RadzenLabel>
+                        </HeaderTemplate>
+                        <Template Context="item">
+                            <RadzenCheckBox TValue="bool" TriState="false" Value="@ModbusTcpService.SimulationVariables.Contains(item)" Change="@(isChecked => SetCheckedSimulated(isChecked, item))" Style="margin-left: 2rem" />
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="ModbusVariableModel" ColumnPickerTitle="Адрес" Resizable="false" Width="8rem" OrderIndex="3">
+                        <HeaderTemplate>
+                            <RadzenLabel Style="font-weight:bold;">
+                                Адрес
+                            </RadzenLabel>
+                        </HeaderTemplate>
+                        <Template Context="item">
+                            @item.StringAddress
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="ModbusVariableModel" ColumnPickerTitle="Тип данных" Resizable="false" Width="6rem" OrderIndex="4">
+                        <HeaderTemplate>
+                            <RadzenLabel Style="font-weight:bold;">
+                                Тип данных
+                            </RadzenLabel>
+                        </HeaderTemplate>
+                        <Template Context="item">
+                            <RadzenLabel>
+                                @item.StringTypeValue
+                            </RadzenLabel>
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="ModbusVariableModel" ColumnPickerTitle="Значение" Resizable="false" Width="8rem" OrderIndex="5">
+                        <HeaderTemplate>
+                            <RadzenLabel Style="font-weight:bold;">
+                                Значение
+                            </RadzenLabel>
+                        </HeaderTemplate>
+                        <Template Context="item">
+                            @{
+                                if (item.Value != null)
+                                {
+                                    if (item.DataTypeNet == SimulatorDataTypes.Double)
+                                    {
+                                        <RadzenNumeric TValue="double" Value="@Convert.ToDouble(item.Value)" Change="@(value => ChangeVariableValue(value, item))"
+                                                       Format="#0.00" Step="0.01" />
+                                    }
+                                    else if (item.DataTypeNet == SimulatorDataTypes.Single)
+                                    {
+                                        <RadzenNumeric TValue="float" Value="@Convert.ToSingle(item.Value)" Change="@(value => ChangeVariableValue(value, item))"
+                                                       Format="#0.00" Step="0.01" />
+                                    }
+                                    else if (item.DataTypeNet == SimulatorDataTypes.UInt16)
+                                    {
+                                        <RadzenNumeric TValue="ushort" Value="@Convert.ToUInt16(item.Value)" Change="@(value => ChangeVariableValue(value, item))" />
+                                    }
+                                    else if (item.DataTypeNet == SimulatorDataTypes.UInt32)
+                                    {
+                                        <RadzenNumeric TValue="uint" Value="@Convert.ToUInt32(item.Value)" Change="@(value => ChangeVariableValue(value, item))" />
+                                    }
+                                    else if (item.DataTypeNet == SimulatorDataTypes.UInt64)
+                                    {
+                                        <RadzenNumeric TValue="ulong" Value="@Convert.ToUInt64(item.Value)" Change="@(value => ChangeVariableValue(value, item))" />
+                                    }
+                                }
+                            }
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="ModbusVariableModel" ColumnPickerTitle="Метка времени" Resizable="false" Width="11rem" OrderIndex="6">
+                        <HeaderTemplate>
+                            <RadzenLabel Style="font-weight:bold;">
+                                Метка времени
+                            </RadzenLabel>
+                        </HeaderTemplate>
+                        <Template Context="item">
+                            <RadzenLabel>
+                                @item.Timestamp.ToString("dd.MM.yyyy HH:mm:ss.fff tt zz")
+                            </RadzenLabel>
+                        </Template>
+                    </RadzenDataGridColumn>
+                </Columns>
+            </RadzenDataGrid>
+        </RadzenCard>
+    </RadzenStack>
+</RadzenStack>

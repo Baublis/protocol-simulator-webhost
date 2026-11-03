@@ -1,0 +1,38 @@
+﻿<div class="vertical-separator @Class" style="@GetStyles()"></div>
+
+@code {
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter]
+    public int Height { get; set; } = 16; // высота в пикселях
+
+    [Parameter]
+    public int Width { get; set; } = 1; // ширина в пикселях
+
+    [Parameter]
+    public string? Color { get; set; }
+
+    [Parameter]
+    public int Margin { get; set; } = 4; // отступы сверху/снизу
+
+    private string GetStyles()
+    {
+        var styles = new List<string>
+        {
+            $"width: {Width}px",
+            $"height: {Height}px",
+            $"margin: {Margin}px 0",
+            "background: var(--border-dark, #e0e0e0)",
+            "align-self: center",
+            "display: inline-block"
+        };
+
+        if (!string.IsNullOrEmpty(Color))
+        {
+            styles.Add($"background: {Color}");
+        }
+
+        return string.Join("; ", styles);
+    }
+}

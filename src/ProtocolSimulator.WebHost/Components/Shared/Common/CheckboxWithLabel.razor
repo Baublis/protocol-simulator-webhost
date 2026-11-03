@@ -1,0 +1,23 @@
+﻿<div style="display: flex; align-items: center; gap: @Gap;">
+    <RadzenCheckBox TValue="bool"
+                    @bind-Value="@Value"
+                    Disabled="@Disabled" />
+    <RadzenLabel Text="@LabelText" />
+</div>
+
+@code {
+    [Parameter]
+    public bool Value { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> ValueChanged { get; set; }
+
+    [Parameter]
+    public string LabelText { get; set; } = "";
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    [Parameter]
+    public string Gap { get; set; } = "0.5rem";
+}

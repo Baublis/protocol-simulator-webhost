@@ -1,0 +1,69 @@
+﻿@inject NavigationManager Navigation
+
+<RadzenHeader class="app-header">
+    <div class="flex align-center gap-md" style="width: 100%; height: 100%;">
+
+        <!-- Кнопка сворачивания сайдбара (слева) -->
+        <div style="display: flex; align-items: center; gap: 10px;">
+
+            <RadzenSidebarToggle Click="@(() => OnSidebarToggle(!SidebarExpanded))"
+                                    class="sidebar-toggle-btn" />
+
+            <!-- Логотип и название -->
+            <RadzenSidebarToggle Click="GoHome" Icon="home" Style="padding-left: 10px; font-size: 28px;" 
+                                    class="sidebar-toggle-btn" />
+
+            <div class="header-title">
+                @AppCommon.AppName
+            </div>
+
+        </div>
+
+        <!-- Статистика (справа) -->
+        <div class="header-stats">
+            <RadzenBadge Variant="Variant.Filled" Text="@($"OPC UA: {OpcServersCount}")"
+
+                         class="badge badge-opc" />
+            <RadzenBadge Variant="Variant.Filled" Text="@($"Modbus TCP: {ModbusServersCount}")"
+                         class="badge badge-modbus" />
+
+            <RadzenBadge Variant="Variant.Filled" Text="@($"Запущено серверов: {RunningServersCount}")"
+                         class="badge badge-running" />
+
+            <RadzenBadge Variant="Variant.Filled" Text="@($"Запущено симуляторов: {SimulatinServerCount}")"
+                         class="badge badge-running" />
+        </div>
+
+    </div>
+</RadzenHeader>
+
+@code {
+    [Parameter]
+    public bool SidebarExpanded { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> SidebarExpandedChanged { get; set; }
+
+    [Parameter]
+    public int OpcServersCount { get; set; }
+
+    [Parameter]
+    public int ModbusServersCount { get; set; }
+
+    [Parameter]
+    public int RunningServersCount { get; set; }
+
+    [Parameter]
+    public int SimulatinServerCount { get; set; }
+
+    private Task OnSidebarToggle(bool expanded)
+    {
+        SidebarExpanded = expanded;
+        return SidebarExpandedChanged.InvokeAsync(expanded);
+    }
+
+    private void GoHome()
+    {
+        Navigation.NavigateTo("/", forceLoad: false);
+    }
+}

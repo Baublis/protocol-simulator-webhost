@@ -5,11 +5,16 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="/" />
-    <link rel="stylesheet" href="bootstrap/bootstrap.min.css" />
-    <link rel="stylesheet" href="app.css" />
-    <link rel="stylesheet" href="ProtocolSimulator.WebHost.styles.css" />
-    <link rel="icon" type="image/png" href="favicon.png" />
-    <HeadOutlet @rendermode="InteractiveServer" />
+
+    <!-- 1. Тема Radzen из NuGet -->
+    <link rel="stylesheet" href="_content/Radzen.Blazor/css/material-base.css" />
+
+    <!-- 2. Ваши стили. Порядок ВАЖЕН: кастомные — после Radzen -->
+    <link rel="stylesheet" href="css/site.css" />
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="stylesheet" href="css/radzen-custom.css" />
+
+    <HeadOutlet />
 </head>
 
 <body>

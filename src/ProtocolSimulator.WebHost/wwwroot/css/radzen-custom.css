@@ -1,0 +1,163 @@
+﻿/* Переопределение стилей Radzen для нашего дизайна */
+
+/* Сайдбар Radzen */
+.rz-sidebar {
+    background-color: var(--bg-sidebar) !important;
+    border-right: 1px solid var(--border-dark) !important;
+}
+
+.rz-sidebar-toggle {
+    color: var(--text-light) !important;
+}
+
+    .rz-sidebar-toggle:hover {
+        background: rgba(255, 255, 255, 0.1) !important;
+    }
+
+/* Контейнер Radzen */
+.rz-layout {
+    height: 100vh !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+.rz-layout-header {
+    padding: 0 !important;
+}
+
+.rz-layout-body {
+    display: flex !important;
+    flex: 1 !important;
+    overflow: hidden !important;
+}
+
+.rz-body {
+    flex: 1 !important;
+    overflow: auto !important;
+    background: var(--bg-secondary) !important;
+    padding: 24px !important;
+}
+
+/* Вкладки Radzen */
+.rz-tabview {
+    height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+.rz-tabview-nav {
+    background: transparent !important;
+    border-bottom: 1px solid var(--border-dark) !important;
+}
+
+.rz-tabview-nav li > a {
+    color: var(--text-muted) !important;
+    padding: 12px 20px !important;
+    border: none !important;
+    border-bottom: 2px solid transparent !important;
+}
+
+    .rz-tabview-nav li > a:hover {
+        color: var(--text-light) !important;
+        background: rgba(255, 255, 255, 0.05) !important;
+    }
+
+    .rz-tabview-nav li > a.rz-state-active {
+        color: var(--text-light) !important;
+        background: rgba(255, 255, 255, 0.1) !important;
+        border-bottom-color: var(--secondary-green) !important;
+    }
+
+/* Кнопки Radzen */
+.rz-button {
+    border-radius: var(--radius-sm) !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.5px !important;
+    transition: all var(--transition-fast) !important;
+}
+
+.rz-button.rz-primary {
+    background: var(--primary-blue) !important;
+    border-color: var(--primary-blue) !important;
+}
+
+    .rz-button.rz-primary:hover {
+        background: var(--primary-light) !important;
+        border-color: var(--primary-light) !important;
+        transform: translateY(-1px);
+        box-shadow: var(--shadow-md) !important;
+    }
+
+.rz-button.rz-success {
+    background: var(--secondary-green) !important;
+    border-color: var(--secondary-green) !important;
+}
+
+.rz-button.rz-warning {
+    background: var(--secondary-orange) !important;
+    border-color: var(--secondary-orange) !important;
+}
+
+.rz-button.rz-danger {
+    background: var(--secondary-red) !important;
+    border-color: var(--secondary-red) !important;
+}
+
+/* Карточки Radzen */
+.rz-card {
+    border-radius: var(--radius-lg) !important;
+    border: 1px solid var(--border-light) !important;
+    box-shadow: var(--shadow-sm) !important;
+    transition: all var(--transition-normal) !important;
+}
+
+    .rz-card:hover {
+        box-shadow: var(--shadow-md) !important;
+        transform: translateY(-2px);
+    }
+
+/* Бэйджи Radzen */
+.rz-badge {
+    border-radius: 12px !important;
+    font-weight: 500 !important;
+    padding: 4px 8px !important;
+    font-size: 12px !important;
+}
+
+/* Формы Radzen */
+.rz-form-field-label {
+    color: var(--text-secondary) !important;
+    font-weight: 500 !important;
+    margin-bottom: 4px !important;
+}
+
+    .rz-textbox:focus, .rz-dropdown:focus, .rz-spinner:focus, .rz-textarea:focus {
+        border-color: var(--primary-blue) !important;
+        box-shadow: 0 0 0 3px rgba(26, 35, 126, 0.1) !important;
+    }
+
+/* Иконки */
+.rz-icon {
+    transition: all var(--transition-fast) !important;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+    .app-header {
+        padding: 0 16px;
+    }
+
+    .content-area {
+        padding: 16px !important;
+    }
+
+    .rz-tabview-nav li > a {
+        padding: 8px 12px !important;
+        font-size: 14px !important;
+    }
+}
+
+/* Стили для вкладок Radzen в сайдбаре */
+.rz-tabview-title, .rz-tabview-icon {
+    color: white !important;
+}

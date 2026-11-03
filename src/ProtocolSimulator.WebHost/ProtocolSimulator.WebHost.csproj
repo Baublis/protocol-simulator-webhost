@@ -7,6 +7,23 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Content Remove="Components\Pages\ServerModBusTcp.razor" />
+    <Content Remove="Components\Pages\ServerOpcUa.razor" />
+    <Content Remove="Components\Shared\Common\CheckboxWithLabel.razor" />
+    <Content Remove="Components\Shared\Common\Loader.razor" />
+    <Content Remove="Components\Shared\Common\Separator.razor" />
+    <Content Remove="Components\Shared\Common\VerticalSeparator.razor" />
+    <Content Remove="Components\Shared\Dialogs\ConfirmDialog.razor" />
+    <Content Remove="Components\Shared\Dialogs\DuplicateServerDialog.razor" />
+    <Content Remove="Components\Shared\Dialogs\FolderDialog.razor" />
+    <Content Remove="Components\Shared\Dialogs\ModbusVariableDialog.razor" />
+    <Content Remove="Components\Shared\Dialogs\OpcVariableDialog.razor" />
+    <Content Remove="Components\Shared\Dialogs\SimulationDialog.razor" />
+    <Content Remove="Components\Shared\LayoutComponents\Footer.razor" />
+    <Content Remove="Components\Shared\LayoutComponents\Header.razor" />
+    <Content Remove="Components\Shared\LayoutComponents\ServerCard.razor" />
+    <Content Remove="Components\Shared\LayoutComponents\ServerTab.razor" />
+    <Content Remove="Components\Shared\LayoutComponents\Sidebar.razor" />
     <Content Remove="nlog.config" />
   </ItemGroup>
 
@@ -21,6 +38,12 @@
     <PackageReference Include="NLog.Targets.Network" Version="6.2.2" />
     <PackageReference Include="NLog.Web.AspNetCore" Version="6.2.2" />
     <PackageReference Include="Radzen.Blazor" Version="12.1.9" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Components\Shared\Common\" />
+    <Folder Include="Components\Shared\Dialogs\" />
+    <Folder Include="Components\Shared\LayoutComponents\" />
   </ItemGroup>
 
 </Project>

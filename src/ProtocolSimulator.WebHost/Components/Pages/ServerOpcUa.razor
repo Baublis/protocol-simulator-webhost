@@ -1,0 +1,860 @@
+﻿@page "/ServerOpcUa"
+
+@inject ServerService ServerService
+@inject NotificationService NotificationService
+@inject DialogService DialogService
+@inject ClipboardService ClipboardService
+
+@code {
+    public bool Deleted = false;
+
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "id")]
+    public int ServerId { get; set; }
+
+    [CascadingParameter]
+    public Layout? Layout { get; set; }
+
+    public ServerModel ServerModel { get; set; }
+
+    public OpcUaService OpcUaService { get; set; }
+
+    public const string Host = "localhost";
+
+    public const string ButtonStyleCss = "min-width: 100px;";
+
+    public const string FormStyleCss = ButtonStyleCss + "width: 100px; height: 56px;";
+
+    public bool NotChecked;
+
+    public bool IsCheckedAll;
+
+    public int CountVariables;
+
+    public int PageSize = 100;
+
+    public object Selection;
+
+    public string ColumnsShowingText { get; set; } = "- отображаемых столбцов";
+
+    public bool IsLoading { get; set; }
+
+    public int ProgressBarValue { get; set; }
+
+    public delegate Task AsyncEventHandler(int value, bool isLoading);
+
+    public event AsyncEventHandler ProgressBarEvent;
+
+    public IEnumerable<StatusCode> QualityOptions = new List<StatusCode>
+    {
+        new StatusCode(OpcStatusCodes.Good),
+        new StatusCode(OpcStatusCodes.Uncertain),
+        new StatusCode(OpcStatusCodes.UncertainEngineeringUnitsExceededOver),
+        new StatusCode(OpcStatusCodes.UncertainEngineeringUnitsExceededUnder),
+        new StatusCode(OpcStatusCodes.BadServerNotConnected),
+        new StatusCode(OpcStatusCodes.BadSensorFailure),
+        new StatusCode(OpcStatusCodes.BadDeviceFailure),
+    };
+
+    public IEnumerable<Type> DataTypes = new List<Type>
+    {
+        SimulatorDataTypes.String,
+        SimulatorDataTypes.Boolean,
+        SimulatorDataTypes.Byte,
+        SimulatorDataTypes.Double,
+        SimulatorDataTypes.Single,
+        SimulatorDataTypes.Int16,
+        SimulatorDataTypes.Int32,
+        SimulatorDataTypes.Int64,
+        SimulatorDataTypes.UInt16,
+        SimulatorDataTypes.UInt32,
+        SimulatorDataTypes.UInt64,
+    };
+
+    public IEnumerable<int> PageSizeOptions = [5, 10, 25, 50, 100, 500];
+
+    public IEnumerable<bool> BoolOptions = [true, false];
+
+    public IEnumerable<Variable> FilteredVariables = [];
+
+    public Dictionary<NodeId, Variable> AllVariables => GetAllVariables();
+
+    public HashSet<Variable> SelectedVariables = [];
+
+    public IEnumerable<Variable> Variables = [];
+
+    public IOpcUaServer UaServer => OpcUaService?.Server;
+
+    public Variant Variant = Variant.Filled;
+
+    public RadzenDataFilter<Variable> DataFilter = new();
+
+    public RadzenDataGrid<Variable> DataGrid = new();
+
+    public NodeStateModel VariableModel = new();
+
+    public NodeStateModel FolderModel = new();
+
+    public LoadDataArgs LoadDataArgs = new();
+
+    public RadzenTree TreeFolders = new();
+
+    public Guid _dataGridKey = Guid.NewGuid();
+
+    // Вызывается при каждом изменении параметров
+    protected override async Task OnParametersSetAsync()
+    {        
+        if (OpcUaService != null)
+        {
+            OpcUaService.SimulateEvent -= NotificationsReceived;
+        }        
+
+        var (service, model) = await ServerService.GetOpcUaServer(ServerId);
+
+        if (service == null || model == null)
+        {
+            Deleted = true;
+
+            return;
+        }
+
+        ServerModel = model;
+
+        OpcUaService = service;
+
+        OpcUaService.SimulateEvent += NotificationsReceived;
+
+        if (UaServer.IsRunning)
+        {
+            Selection = UaServer.NodeManager?.RootFolder;
+
+            await OnChange();
+        }
+
+        if (DataGrid.AllowVirtualization)
+            await DataGrid.RefreshDataAsync();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+    }
+
+    public RenderFragment<RadzenTreeItem> FileOrFolderTemplate = treeItem =>
+    {
+        return treeBuilder =>
+        {
+            treeBuilder.OpenComponent<RadzenIcon>(0);
+            treeBuilder.AddAttribute(1, nameof(RadzenIcon.Icon), "folder");
+            treeBuilder.CloseComponent();
+            treeBuilder.AddContent(3, treeItem.Text);
+        };
+    };
+
+    public Dictionary<NodeId, Variable> GetAllVariables()
+    {
+        return UaServer.NodeManager?.RootFolder?.Variables ?? [];
+    }
+
+    public async Task Execute(Func<Task> action)
+    {
+        await Task.Run(async () =>
+        {
+            IsLoading = true;
+            await action.Invoke();
+            await OnChange();
+            await UpdateServerCard();
+            IsLoading = false;
+        });
+    }
+
+    public async Task OnChange()
+    {
+        await SetCheckedAll(false);
+
+        await LoadData(LoadDataArgs);
+
+        ServerModel.IsSimulating = OpcUaService.SimulateRunning;
+
+        ServerModel.VariableCount = AllVariables.Count;        
+
+        NotChecked = SelectedVariables.Count == 0;
+
+        IsCheckedAll = SelectedVariables.Count == AllVariables.Count;
+    }
+
+    public async Task StartSimulation()
+    {
+        await Execute(async () =>
+        {
+            await OpcUaService.StartSimulation();
+        });  
+    }
+
+    public async Task StopSimulation()
+    {
+        await Execute(async () =>
+        {
+            await OpcUaService.StopSimulation();
+        });        
+    }
+
+    public async Task StopUaServer()
+    {
+        await Execute(async () =>
+        {
+            if (ServerModel.IsSimulating)
+                await ServerService.StartStopStopSimulation(ServerModel);
+
+            await ServerService.StartStopServer(ServerModel);
+        });
+    }
+
+    public async Task StartUaServer()
+    {
+        await Execute(async () =>
+        {
+            await ServerService.StartStopServer(ServerModel);
+
+            if (UaServer.IsRunning)
+            {
+                Selection = UaServer.NodeManager?.RootFolder;                
+            }
+            else
+            {
+                ServerModel.Status = ServerStatus.Error;
+
+                await ShowNotificationError("Не удалось запустить сервер, попробуйте сменить порт");
+            }
+        });
+    }
+
+    public async Task InitOpcData()
+    {
+        if (UaServer.NodeManager == null)
+            return;
+
+        await AddVariable(UaServer.NodeManager.RootFolder, GetVariableName(), (string)"AaBb", 0, true);
+        await AddVariable(UaServer.NodeManager.RootFolder, GetVariableName(), true, 0, true);
+        await AddVariable(UaServer.NodeManager.RootFolder, GetVariableName(), (byte)1, 0, true);
+        await AddVariable(UaServer.NodeManager.RootFolder, GetVariableName(), (double)1, 0, true);
+        await AddVariable(UaServer.NodeManager.RootFolder, GetVariableName(), (short)1, 0, true);
+        await AddVariable(UaServer.NodeManager.RootFolder, GetVariableName(), (int)1, 0, true);
+        await AddVariable(UaServer.NodeManager.RootFolder, GetVariableName(), (long)1, 0, true);
+        await AddVariable(UaServer.NodeManager.RootFolder, GetVariableName(), (float)1, 0, true);
+        await AddVariable(UaServer.NodeManager.RootFolder, GetVariableName(), (ushort)1, 0, true);
+        await AddVariable(UaServer.NodeManager.RootFolder, GetVariableName(), (uint)1, 0, true);
+        await AddVariable(UaServer.NodeManager.RootFolder, GetVariableName(), (ulong)1, 0, true);
+    }
+
+    public async Task AddFolder(Folder parentFolder, string name)
+    {
+        await Execute(async () =>
+        {
+            var folder = UaServer.NodeManager.AddFolder(name, parentFolder);
+
+            if (folder == null)
+                await ShowNotificationError("Каталог с таким именем уже есть");
+        });
+    }
+
+    public async Task AddVariable(Folder folder, string name, object value, uint statusCode = StatusCodes.Good, bool simulated = false)
+    {
+        await Execute(async () =>
+        {
+            var variable = UaServer.NodeManager.AddVariable(name, value, folder, statusCode);
+
+            if (variable == null)
+            {
+                await ShowNotificationError("Ошибка создания переменной");
+            }
+            else
+            {
+                AllVariables[variable.NodeId] = variable;
+
+                variable.Update(value);
+                variable.SetStatusCode(new StatusCode(statusCode));
+
+                if (simulated)
+                    OpcUaService.SimulationVariables.TryAdd(variable.NodeId, variable);
+            }
+        });
+    }
+
+    public async Task DeleteVariables()
+    {
+        await Execute(() =>
+        {
+            foreach (var variable in SelectedVariables)
+            {
+                OpcUaService.SimulationVariables.Remove(variable.NodeId);
+                AllVariables.Remove(variable.NodeId);
+                variable.SetStatusCode(OpcStatusCodes.BadNodeIdUnknown);
+                variable.Delete();
+            }
+
+            SelectedVariables.Clear();
+
+            return Task.CompletedTask;
+        });
+
+        if (DataGrid.AllowVirtualization)
+            await DataGrid.RefreshDataAsync();
+    }
+
+    public async Task AddFolder(NodeStateModel model)
+    {
+        if (Selection is Folder folder)
+            await AddFolder(folder, model.Name);
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public async Task AddVariable(NodeStateModel model)
+    {
+        await Execute(async () =>
+        {
+            if (Selection is Folder folder)
+            {
+                var type = model.VariableType;
+                object value = null;
+
+                if (type == Models.SimulatorDataTypes.Boolean)
+                {
+                    value = model.BooleanValue;
+                }
+                else if (type == Models.SimulatorDataTypes.Byte)
+                {
+                    value = Convert.ToByte(model.NumericValue);
+                }
+                else if (type == Models.SimulatorDataTypes.Double)
+                {
+                    value = Convert.ToDouble(model.NumericValue);
+                }
+                else if (type == Models.SimulatorDataTypes.Single)
+                {
+                    value = Convert.ToSingle(model.NumericValue);
+                }
+                else if (type == Models.SimulatorDataTypes.Int16)
+                {
+                    value = Convert.ToInt16(model.NumericValue);
+                }
+                else if (type == Models.SimulatorDataTypes.Int32)
+                {
+                    value = Convert.ToInt32(model.NumericValue);
+                }
+                else if (type == Models.SimulatorDataTypes.Int64)
+                {
+                    value = Convert.ToInt64(model.NumericValue);
+                }
+                else if (type == Models.SimulatorDataTypes.UInt16)
+                {
+                    value = Convert.ToUInt16(model.NumericValue);
+                }
+                else if (type == Models.SimulatorDataTypes.UInt32)
+                {
+                    value = Convert.ToUInt32(model.NumericValue);
+                }
+                else if (type == Models.SimulatorDataTypes.UInt64)
+                {
+                    value = Convert.ToUInt64(model.NumericValue);
+                }
+                else if (type == Models.SimulatorDataTypes.String)
+                {
+                    value = model.StringValue;
+                }
+
+                if (value != null)
+                {
+                    for (var i = 1U; i <= model.CloneCount; i++)
+                    {
+                        var percentage = ((double)i / model.CloneCount) * 100;
+                        ProgressBarValue = Convert.ToInt32(Math.Round(percentage, 0));
+                        if (percentage - ProgressBarValue == 0.0d && ProgressBarValue % 10 == 0)
+                            ProgressBarEvent?.Invoke(ProgressBarValue, true);
+
+                        await AddVariable(folder, GetVariableName(), value, model.StatusCode.Code, model.Simulated);
+                    }
+                    ProgressBarValue = 0;
+                }
+            }
+        });
+
+        if (DataGrid.AllowVirtualization)
+            await DataGrid.RefreshDataAsync();
+    }
+
+    public Task ShowNotificationError(string message)
+    {
+        var notificationMessage = new NotificationMessage { Summary = "Ошибка:", Severity = NotificationSeverity.Error, Detail = message, Duration = 50000, CloseOnClick = true, Payload = DateTime.Now };
+
+        NotificationService.Notify(notificationMessage);
+
+        return Task.CompletedTask;
+    }
+
+    public Task ShowNotificationSuccess(string message)
+    {
+        var notificationMessage = new NotificationMessage { Summary = "Успешная операция:", Severity = NotificationSeverity.Success, Detail = message, Duration = 50000, CloseOnClick = true, Payload = DateTime.Now };
+
+        NotificationService.Notify(notificationMessage);
+
+        return Task.CompletedTask;
+    }
+
+    private string GetVariableName()
+    {
+        for (var i = 1; i < 100000; i++)
+        {
+            var name = $"{i:d5}";
+
+            if (!AllVariables.Values.Any(e => e.Name == name))
+                return name;
+        }
+
+        throw new InvalidOperationException("Ошибка получения имени");
+    }
+
+    public Task LoadData(LoadDataArgs args)
+    {
+        LoadDataArgs = args;
+
+        if (Selection is Folder folder)
+            Variables = AllVariables.Values;
+
+        var query = AllVariables.Values.AsQueryable();
+
+        query = query.Where(DataFilter);
+
+        CountVariables = query.Count();
+
+        if (args.Skip != null && args.Top != null)
+        {
+            FilteredVariables = query
+                .Skip(args.Skip.Value)
+                .Take(args.Top.Value)
+                .OrderBy(v => v.Name)
+                .ToList();
+        }
+        else
+        {
+            FilteredVariables = query
+                .OrderBy(v => v.Name)
+                .ToList();
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public async Task LoadDataAsync(LoadDataArgs args)
+    {
+        await Task.Yield();
+
+        LoadDataArgs = await Task.FromResult(args);
+
+        if (Selection is Folder folder)
+            Variables = await Task.FromResult(AllVariables.Values);
+
+        var query = AllVariables.Values.AsQueryable();
+
+        query = query.Where(DataFilter);
+
+        CountVariables = await Task.FromResult(query.Count());
+
+        if (args.Skip != null && args.Top != null)
+        {
+            FilteredVariables = await Task.FromResult(query
+                .OrderBy(v => v.Name)
+                .Skip(args.Skip.Value)
+                .Take(args.Top.Value)
+                .ToList());
+        }
+        else
+        {
+            FilteredVariables = await Task.FromResult(query
+                .OrderBy(v => v.Name)
+                .ToList());
+        }
+    }
+
+    public Task SetCheckedSimulated(bool isChecked, Variable variable)
+    {
+        if (isChecked)
+            OpcUaService.SimulationVariables.TryAdd(variable.NodeId, variable);
+        else
+            OpcUaService.SimulationVariables.Remove(variable.NodeId);
+
+        return Task.CompletedTask;
+    }
+
+    public Task SetChecked(bool isChecked, Variable variable)
+    {
+        if (isChecked)
+            SelectedVariables.Add(variable);
+        else
+            SelectedVariables.Remove(variable);
+
+        NotChecked = SelectedVariables.Count == 0;
+
+        IsCheckedAll = SelectedVariables.Count == AllVariables.Values.Count;
+
+        return Task.CompletedTask;
+    }
+
+    public Task SetCheckedAll(bool isChecked)
+    {
+        if (isChecked)
+            foreach (var variable in Variables)
+                SelectedVariables.Add(variable);
+        else
+            foreach (var variable in Variables)
+                SelectedVariables.Remove(variable);
+
+        NotChecked = SelectedVariables.Count == 0;
+
+        IsCheckedAll = SelectedVariables.Count == AllVariables.Values.Count;
+
+        return Task.CompletedTask;
+    }
+
+    public Task ChangeVariableQuality(object value, Variable variable)
+    {
+        if (value is StatusCode statusCode)
+            variable.SetStatusCode(statusCode);
+
+        return Task.CompletedTask;
+    }
+
+    public Task ChangeVariableValue(object value, Variable variable)
+    {
+        variable.Update(value);
+
+        return Task.CompletedTask;
+    }
+
+    public async Task OpenVariableDialog()
+    {
+        await DialogService.OpenAsync<OpcVariableDialog>("Создать переменную",
+            new Dictionary<string, object>
+            {
+                {
+                    nameof(OpcVariableDialog.ServerOpcUa), this
+                },
+                {
+                    nameof(OpcVariableDialog.DataTypes), DataTypes
+                },
+                {
+                    nameof(OpcVariableDialog.QualityOptions), QualityOptions
+                },
+            },
+            new DialogOptions
+            {
+                ShowClose = true,
+                Width = "auto"
+            }
+        );
+    }
+
+    public async Task OpenFolderDialog()
+    {
+        await DialogService.OpenAsync<FolderDialog>("Создать каталог",
+            new Dictionary<string, object>
+            {
+                {
+                    nameof(FolderDialog.OpcUaServer), this
+                },
+            },
+            new DialogOptions
+            {
+                ShowClose = true,
+                Width = "auto"
+            }
+        );
+    }
+
+    public async Task OpenSimulationDialog()
+    {
+        await DialogService.OpenAsync<SimulationDialog>("Настроить симулятор",
+            new Dictionary<string, object>
+            {
+                {
+                    nameof(SimulationDialog.SimulationService), OpcUaService
+                },
+                {
+                    nameof(SimulationDialog.SimulationSettingsModel), OpcUaService.SimulationSettings
+                },
+            },
+            new DialogOptions
+            {
+                ShowClose = true,
+                Width = "auto"
+            }
+        );
+    }
+
+    public Task SaveSimulation(SimulationSettingsModel settings)
+    {
+        DialogService.Close(true);
+
+        return Task.CompletedTask;
+    }
+
+    public Task SettingsChanged(DataGridPickedColumnsChangedEventArgs<Variable> settings)
+    {
+        var count = settings.Columns.Count();
+
+        ColumnsShowingText = count < 5 ? "- отображаемых столбца" : "- отображаемых столбцов";
+
+        return Task.CompletedTask;
+    }
+
+    public async Task NotificationsReceived()
+    {
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task CopyToClipboard(NodeId nodeId)
+    {
+        try
+        {
+            await ClipboardService.WriteTextAsync(nodeId.ToString());
+        }
+        catch
+        {
+            // ignore
+        }
+    }
+
+    private async Task ChangePort()
+    {
+        await UpdateServerCard();
+    }
+
+    private async Task UpdateServerCard()
+    {
+        if (Layout != null)
+        {
+            await Layout.RefreshSidebarAsync();
+        }
+    }
+
+    public async Task OpenDuplicateDialog()
+    {
+        await Execute(async () =>
+        {
+            var result = await DialogService.OpenAsync<DuplicateServerDialog>("Дублирование сервера",
+                new Dictionary<string, object>
+                {
+                { nameof(DuplicateServerDialog.SourceServer), ServerModel },
+                { nameof(DuplicateServerDialog.OnDuplicate), EventCallback.Factory.Create<DuplicateResult>(this, HandleDuplicateResult) }
+                },
+                new DialogOptions
+                {
+                    ShowClose = true,
+                    Width = "600px",
+                    CloseDialogOnOverlayClick = false
+                }
+            );
+        });
+    }
+
+    private async Task HandleDuplicateResult(DuplicateResult result)
+    {
+        if (result != null && result.IsSuccess)
+        {
+            await ShowNotificationSuccess($"Создано {result.SuccessCount} копий сервера");
+            await UpdateServerCard();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+}
+
+<Loader IsLoading="@IsLoading" />
+<RadzenStack Visible="Deleted == false">
+    <RadzenCard>
+        <RadzenStack>
+            <RadzenLabel Style="font-size:larger; font-weight:bold;">
+                Управление сервером: @ServerModel.Name
+            </RadzenLabel>
+            <RadzenStack Orientation="Orientation.Horizontal">
+                <RadzenFormField Text="Порт" Variant="Variant.Flat" Style="@FormStyleCss">
+                    <RadzenNumeric TValue="int" @bind-value="@ServerModel.Port" Disabled="UaServer.IsRunning" Change="ChangePort" />
+                </RadzenFormField>
+                <RadzenButton Click="StartUaServer" ButtonStyle="ButtonStyle.Primary" Text="Запустить сервер" Visible="!UaServer.IsRunning" />
+                <RadzenButton Click="StopUaServer" ButtonStyle="ButtonStyle.Warning" Text="Остановить сервер" Visible="UaServer.IsRunning" />
+                <RadzenButton Click="OpenFolderDialog" ButtonStyle="ButtonStyle.Primary" Text="Создать каталог" Disabled="!UaServer.IsRunning" Visible="false" />
+                <RadzenButton Click="OpenVariableDialog" ButtonStyle="ButtonStyle.Primary" Text="Создать переменную" Disabled="!UaServer.IsRunning | OpcUaService.SimulateRunning" />
+                <RadzenButton Click="DeleteVariables" ButtonStyle="ButtonStyle.Danger" Text="Удалить переменную" Disabled="NotChecked | !UaServer.IsRunning | OpcUaService.SimulateRunning" />
+                <RadzenButton Click="OpenSimulationDialog" ButtonStyle="ButtonStyle.Primary" Text="Настроить симулятор" Disabled="OpcUaService.SimulateRunning | !UaServer.IsRunning" />
+                <RadzenButton Click="StartSimulation" ButtonStyle="ButtonStyle.Primary" Text="Запустить симулятор" Visible="!OpcUaService.SimulateRunning" Disabled="!UaServer.IsRunning" />
+                <RadzenButton Click="StopSimulation" ButtonStyle="ButtonStyle.Warning" Text="Остановить симулятор" Visible="OpcUaService.SimulateRunning" Disabled="!UaServer.IsRunning" />
+                <RadzenButton Click="OpenDuplicateDialog" ButtonStyle="ButtonStyle.Info" Text="Дублировать сервер" Disabled="!UaServer.IsRunning" />
+            </RadzenStack>
+        </RadzenStack>
+    </RadzenCard>
+    <RadzenStack Orientation="Orientation.Horizontal" Visible="@OpcUaService.Server.IsRunning" Style="height: calc(100vh - 250px);">
+        <RadzenCard Variant="Variant" Style="display:grid">
+            <RadzenDataGrid TItem="Variable" accesskey="@_dataGridKey"
+                            @ref="DataGrid" LoadData="@LoadDataAsync" Data="@FilteredVariables" Count="@CountVariables" AllowVirtualization="true"
+                            AllowPaging="false" AllowSorting="false" AllowColumnResize="true" ShowPagingSummary="true"
+                            PageSize="@PageSize" PageSizeOptions="@PageSizeOptions" PageSizeChanged="@(args => PageSize = args)"
+                            PageSizeText="" PagingSummaryFormat="Всего записей: {2}" EmptyText="Нет записей для отображения"
+                            PagerHorizontalAlign="HorizontalAlign.Center" PagerPosition="PagerPosition.Bottom" ColumnsShowingText="@ColumnsShowingText"
+                            PickedColumnsChanged="SettingsChanged" GridLines="DataGridGridLines.Both" Density="Density.Compact"
+                            AllowColumnPicking="true" ColumnsText="Нет выбранных столбцов" AllColumnsText="Выбрать все">
+
+                <Columns>
+                    <RadzenDataGridColumn TItem="Variable" Pickable="false" Resizable="false" Width="2rem" OrderIndex="1">
+                        <HeaderTemplate>
+                            <RadzenCheckBox TValue="bool" TriState="false" @bind-Value="@IsCheckedAll" Change="@(isChecked => SetCheckedAll(isChecked))" />
+                        </HeaderTemplate>
+                        <Template Context="item">
+                            <RadzenCheckBox TValue="bool" TriState="false" Value="@SelectedVariables.Contains(item)" Change="@(isChecked => SetChecked(isChecked, item))" />
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="Variable" ColumnPickerTitle="Симуляция" Resizable="false" Width="6rem" OrderIndex="6">
+                        <HeaderTemplate>
+                            <RadzenLabel Style="font-weight:bold;">
+                                Симуляция
+                            </RadzenLabel>
+                        </HeaderTemplate>
+                        <Template Context="item">
+                            <RadzenCheckBox TValue="bool" TriState="false" Value="@OpcUaService.SimulationVariables.Values.Contains(item)" Change="@(isChecked => SetCheckedSimulated(isChecked, item))" Style="margin-left: 2rem" />
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="Variable" ColumnPickerTitle="Наименование" Resizable="false" Width=" 8rem" OrderIndex="2" Visible="false">
+                        <HeaderTemplate>
+                            <RadzenLabel Style="font-weight:bold;">
+                                Наименование
+                            </RadzenLabel>
+                        </HeaderTemplate>
+                        <Template Context="item">
+                            @item.Name
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="Variable" ColumnPickerTitle="Идентификатор" Resizable="false" Width="13rem" OrderIndex="3">
+                        <HeaderTemplate>
+                            <RadzenLabel Style="font-weight:bold;">
+                                Идентификатор
+                            </RadzenLabel>
+                        </HeaderTemplate>
+                        <Template Context="item">
+                            <RadzenRow JustifyContent="JustifyContent.Stretch" AlignItems="AlignItems.Center">
+                                <RadzenLabel>
+                                    @item.NodeId
+                                </RadzenLabel>
+                                <RadzenButton Click="_ => CopyToClipboard(item.NodeId)" Size="ButtonSize.ExtraSmall" Icon="content_copy"></RadzenButton>
+                            </RadzenRow>
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="Variable" ColumnPickerTitle="Тип данных" Resizable="false" Width="6rem" OrderIndex="4">
+                        <HeaderTemplate>
+                            <RadzenLabel Style="font-weight:bold;">
+                                Тип данных
+                            </RadzenLabel>
+                        </HeaderTemplate>
+                        <Template Context="item">
+                            <RadzenLabel>
+                                @item.StringDataTypeNet
+                            </RadzenLabel>
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="Variable" ColumnPickerTitle="Значение" Resizable="false" Width="8rem" OrderIndex="5">
+                        <HeaderTemplate>
+                            <RadzenLabel Style="font-weight:bold;">
+                                Значение
+                            </RadzenLabel>
+                        </HeaderTemplate>
+                        <Template Context="item">
+                            @{
+                                if (item.Value != null)
+                                {
+                                    if (item.DataTypeNet == Models.SimulatorDataTypes.Boolean)
+                                    {
+                                        <RadzenDropDown TValue="bool" Value="@Convert.ToBoolean(item.Value)" Data=@BoolOptions Change="@(value => ChangeVariableValue(value, item))" />
+                                    }
+                                    else if (item.DataTypeNet == Models.SimulatorDataTypes.Byte)
+                                    {
+                                        <RadzenNumeric TValue="byte" Value="@Convert.ToByte(item.Value)" Change="@(value => ChangeVariableValue(value, item))" />
+                                    }
+                                    else if (item.DataTypeNet == Models.SimulatorDataTypes.Double)
+                                    {
+                                        <RadzenNumeric TValue="double" Value="@Convert.ToDouble(item.Value)" Change="@(value => ChangeVariableValue(value, item))"
+                                                       Format="#0.00" Step="0.01" />
+                                    }
+                                    else if (item.DataTypeNet == Models.SimulatorDataTypes.Single)
+                                    {
+                                        <RadzenNumeric TValue="float" Value="@Convert.ToSingle(item.Value)" Change="@(value => ChangeVariableValue(value, item))"
+                                                       Format="#0.00" Step="0.01" />
+                                    }
+                                    else if (item.DataTypeNet == Models.SimulatorDataTypes.Int16)
+                                    {
+                                        <RadzenNumeric TValue="short" Value="@Convert.ToInt16(item.Value)" Change="@(value => ChangeVariableValue(value, item))" />
+                                    }
+                                    else if (item.DataTypeNet == Models.SimulatorDataTypes.Int32)
+                                    {
+                                        <RadzenNumeric TValue="int" Value="@Convert.ToInt32(item.Value)" Change="@(value => ChangeVariableValue(value, item))" />
+                                    }
+                                    else if (item.DataTypeNet == Models.SimulatorDataTypes.Int64)
+                                    {
+                                        <RadzenNumeric TValue="long" Value="@Convert.ToInt64(item.Value)" Change="@(value => ChangeVariableValue(value, item))" />
+                                    }
+                                    else if (item.DataTypeNet == Models.SimulatorDataTypes.UInt16)
+                                    {
+                                        <RadzenNumeric TValue="ushort" Value="@Convert.ToUInt16(item.Value)" Change="@(value => ChangeVariableValue(value, item))" />
+                                    }
+                                    else if (item.DataTypeNet == Models.SimulatorDataTypes.UInt32)
+                                    {
+                                        <RadzenNumeric TValue="uint" Value="@Convert.ToUInt32(item.Value)" Change="@(value => ChangeVariableValue(value, item))" />
+                                    }
+                                    else if (item.DataTypeNet == Models.SimulatorDataTypes.UInt64)
+                                    {
+                                        <RadzenNumeric TValue="ulong" Value="@Convert.ToUInt64(item.Value)" Change="@(value => ChangeVariableValue(value, item))" />
+                                    }
+                                    else if (item.DataTypeNet == Models.SimulatorDataTypes.String)
+                                    {
+                                        <RadzenTextBox Value="@item.Value.ToString()" Change="@(value => ChangeVariableValue(value, item))" Style="width: -webkit-fill-available" />
+                                    }
+                                }
+                            }
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="Variable" ColumnPickerTitle="Статус" Resizable="false" Width="21rem" OrderIndex="7">
+                        <HeaderTemplate>
+                            <RadzenLabel Style="font-weight:bold;">
+                                Статус
+                            </RadzenLabel>
+                        </HeaderTemplate>
+                        <Template Context="item">
+                            <RadzenDropDown Style="width:25rem" @bind-Value="@item.StatusCode" Data=@QualityOptions Change="value => ChangeVariableQuality(value, item)" />
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="Variable" ColumnPickerTitle="Код статуса" Resizable="false" Width="6rem" OrderIndex="8">
+                        <HeaderTemplate>
+                            <RadzenLabel Style="font-weight:bold;">
+                                Код статуса
+                            </RadzenLabel>
+                        </HeaderTemplate>
+                        <Template Context="item">
+                            <RadzenLabel>
+                                @item.StatusCode.Code
+                            </RadzenLabel>
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="Variable" ColumnPickerTitle="Метка времени" Resizable="false" Width="11rem" OrderIndex="9">
+                        <HeaderTemplate>
+                            <RadzenLabel Style="font-weight:bold;">
+                                Метка времени
+                            </RadzenLabel>
+                        </HeaderTemplate>
+                        <Template Context="item">
+                            <RadzenLabel>
+                                @item.Timestamp.ToString("dd.MM.yyyy HH:mm:ss.fff tt zz")
+                            </RadzenLabel>
+                        </Template>
+                    </RadzenDataGridColumn>
+                </Columns>
+            </RadzenDataGrid>
+        </RadzenCard>
+    </RadzenStack>
+</RadzenStack>

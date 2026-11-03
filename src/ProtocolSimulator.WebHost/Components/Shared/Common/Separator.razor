@@ -1,0 +1,15 @@
+﻿<div style="display: flex; align-items: center; gap: 0.5rem; margin: @Margin;">
+    @if (!string.IsNullOrEmpty(Text))
+    {
+        <span style="font-weight: 500; color: var(--rz-text-secondary);">@Text</span>
+    }
+    <div style="flex: 1; height: 1px; background: var(--rz-border-color);"></div>
+</div>
+
+@code {
+    [Parameter]
+    public string Text { get; set; } = "";
+
+    [Parameter]
+    public string Margin { get; set; } = "";
+}
