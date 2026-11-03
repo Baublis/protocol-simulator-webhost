@@ -19,8 +19,6 @@
     <Content Remove="Components\Shared\Dialogs\ModbusVariableDialog.razor" />
     <Content Remove="Components\Shared\Dialogs\OpcVariableDialog.razor" />
     <Content Remove="Components\Shared\Dialogs\SimulationDialog.razor" />
-    <Content Remove="Components\Shared\LayoutComponents\Footer.razor" />
-    <Content Remove="Components\Shared\LayoutComponents\Header.razor" />
     <Content Remove="Components\Shared\LayoutComponents\ServerCard.razor" />
     <Content Remove="Components\Shared\LayoutComponents\ServerTab.razor" />
     <Content Remove="Components\Shared\LayoutComponents\Sidebar.razor" />
@@ -43,7 +41,18 @@
   <ItemGroup>
     <Folder Include="Components\Shared\Common\" />
     <Folder Include="Components\Shared\Dialogs\" />
-    <Folder Include="Components\Shared\LayoutComponents\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Update="wwwroot\css\app.css">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Content>
+    <Content Update="wwwroot\css\radzen-custom.css">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Content>
+    <Content Update="wwwroot\css\site.css">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>

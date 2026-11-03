@@ -113,7 +113,7 @@ html, body {
 
 /* Футер */
 .app-footer {
-    background: var(--primary-dark);
+    /*background: var(--primary-dark);*/
     color: var(--text-muted);
     height: 35px;
     padding: 0 24px;

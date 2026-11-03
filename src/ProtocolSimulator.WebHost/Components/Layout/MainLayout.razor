@@ -4,13 +4,11 @@
 
 <RadzenLayout Style="height: 100vh; display: flex; flex-direction: column;">
 
-    <div style="background: linear-gradient(135deg, #062767, #1a237e); color: #fff; height: 60px; display: flex; align-items: center; padding: 0 24px;">
-        <span style="font-size: 18px; font-weight: 500;">Эмулятор OPC UA и Modbus TCP</span>
-    </div>
+    <Header @bind-SidebarExpanded="_sidebarExpanded" />
 
     <div style="display: flex; flex: 1; overflow: hidden;">
 
-        <div style="width: 300px; background: #1a237e; color: #fff; flex-shrink: 0;">
+        <div style="width: 300px; background: #1a237e; color: #fff; flex-shrink: 0; padding: 1rem;">
             @* Здесь будет Sidebar *@
         </div>
 
@@ -20,9 +18,7 @@
 
     </div>
 
-    <div style="background: #062767; color: rgba(255,255,255,0.7); height: 35px; display: flex; align-items: center; padding: 0 24px; font-size: 14px;">
-        <span>© @DateTime.Now.Year — by Димати</span>
-    </div>
+    <Footer />
 
 </RadzenLayout>
 
@@ -31,3 +27,7 @@
     <a href="" class="reload">Reload</a>
     <a class="dismiss">🗙</a>
 </div>
+
+@code {
+    private bool _sidebarExpanded = true;
+}

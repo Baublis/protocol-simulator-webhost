@@ -7,11 +7,12 @@
         <div style="display: flex; align-items: center; gap: 10px;">
 
             <RadzenSidebarToggle Click="@(() => OnSidebarToggle(!SidebarExpanded))"
-                                    class="sidebar-toggle-btn" />
+                                 class="sidebar-toggle-btn" />
 
             <!-- Логотип и название -->
-            <RadzenSidebarToggle Click="GoHome" Icon="home" Style="padding-left: 10px; font-size: 28px;" 
-                                    class="sidebar-toggle-btn" />
+            <RadzenSidebarToggle Click="GoHome" Icon="home"
+                                 Style="padding-left: 10px; font-size: 28px;"
+                                 class="sidebar-toggle-btn" />
 
             <div class="header-title">
                 @AppCommon.AppName
@@ -22,14 +23,11 @@
         <!-- Статистика (справа) -->
         <div class="header-stats">
             <RadzenBadge Variant="Variant.Filled" Text="@($"OPC UA: {OpcServersCount}")"
-
                          class="badge badge-opc" />
             <RadzenBadge Variant="Variant.Filled" Text="@($"Modbus TCP: {ModbusServersCount}")"
                          class="badge badge-modbus" />
-
             <RadzenBadge Variant="Variant.Filled" Text="@($"Запущено серверов: {RunningServersCount}")"
                          class="badge badge-running" />
-
             <RadzenBadge Variant="Variant.Filled" Text="@($"Запущено симуляторов: {SimulatinServerCount}")"
                          class="badge badge-running" />
         </div>
