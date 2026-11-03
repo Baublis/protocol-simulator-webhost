@@ -1,7 +1,22 @@
 ﻿@page "/"
 
-<PageTitle>Home</PageTitle>
+<PageTitle>@AppCommon.AppName</PageTitle>
 
-<h1>Hello, world!</h1>
+<div style="height:100%; width: 100%; text-align: center; justify-items: center; align-content: center">
 
-Welcome to your new app.
+    <div style="margin-bottom: 40px;">
+        <div style="font-size: 3rem; color: #1a237e; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 15px;">
+            <span>@AppCommon.AppName</span>
+            <div style="font-size: 1rem; color: #666; font-family: 'Segoe Script', 'Bradley Hand', 'Brush Script MT', cursive; font-style: italic; font-weight: 300; transform: rotate(-2deg); display: inline-block; padding: 5px 15px; border: 1px dashed #ccc; border-radius: 8px; background-color: rgba(255, 255, 255, 0.8);">
+                by Димати
+            </div>
+        </div>
+    </div>
+
+    <div style="background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); margin-bottom: 30px; max-width: 600px;">
+        <p style="color: #666; line-height: 1.6; margin: 0;">
+            Добро пожаловать в веб-интерфейс для создания и управления серверами OPC UA и Modbus TCP.
+            Используйте боковую панель для навигации между разделами и управления серверами.
+        </p>
+    </div>
+</div>
