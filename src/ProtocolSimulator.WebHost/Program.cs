@@ -1,11 +1,13 @@
 using NLog.Web;
 using NLog;
+using ProtocolSimulator.Core.Server;
+using ProtocolSimulator.Core.Services;
 using ProtocolSimulator.WebHost.Components;
 using ProtocolSimulator.WebHost.Services.RadzenServices;
 using ProtocolSimulator.WebHost;
 using Radzen;
 
-var logger = NLog.LogManager.Setup()
+var logger = LogManager.Setup()
     .LoadConfigurationFromAppSettings()
     .GetCurrentClassLogger();
 
@@ -39,8 +41,12 @@ try
     // 6. HttpClient
     builder.Services.AddHttpClient();
 
-    // 7. Ваши бэкенд-сервисы (пока не регистрируем — создадим на следующем шаге)
-    // builder.Services.AddSingleton<ServerService>();
+    // 7. HttpClient
+    builder.Services.AddHttpClient();
+
+    // 8. Сервисы Core
+    builder.Services.AddSingleton<ServerService>();
+    builder.Services.AddSingleton<IServerManager>(sp => sp.GetRequiredService<ServerService>());
 
     var app = builder.Build();
 
@@ -69,5 +75,5 @@ catch (Exception ex)
 }
 finally
 {
-    NLog.LogManager.Shutdown();
+    LogManager.Shutdown();
 }
