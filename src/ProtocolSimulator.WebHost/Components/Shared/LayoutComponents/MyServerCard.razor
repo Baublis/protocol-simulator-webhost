@@ -1,0 +1,116 @@
+﻿@inject NavigationManager Navigation
+@inject DialogService DialogService
+
+<div class="server-card @GetCardClass()" @onclick="ClickServer" style="cursor: pointer;">
+
+    <div class="flex align-center justify-between gap-sm">
+
+        <!-- Статус и информация -->
+        <div class="flex align-center gap-md" style="flex: 1;">
+
+            <!-- Иконка статуса -->
+            <div class="server-status">
+                <div class="status-dot @GetStatusClass()"></div>
+                @if (Server.IsSimulating)
+                {
+                    <RadzenIcon Icon="play_circle" Style="color: #ff9800; font-size: 14px;"
+                                title="Симуляция запущена" />
+                }
+            </div>
+
+            <!-- Информация о сервере -->
+            <div class="server-info">
+                <div class="server-name">@Server.Name</div>
+                <div class="server-meta">
+                    Порт: @Server.Port •
+                    @Server.VariableCount @(Server.Type == ServerType.OpcUa ? "переменных" : "регистров")
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Кнопки управления -->
+        <div class="flex align-center" style="gap: 15px">
+
+            <RadzenButton Icon="@GetStartStopServerIcon()"
+                          ButtonStyle="@GetStartStopServerButtonStyle()"
+                          Size="ButtonSize.Small"
+                          Click="StartStopServer"
+                          @onclick:stopPropagation="true"
+                          title="@GetStartStopServerTitle()"
+                          Disabled="Server.IsSimulating" />
+
+            <RadzenButton Icon="@GetStartStopSimulatingIcon()"
+                          ButtonStyle="@GetStartStopSimulatingButtonStyle()"
+                          Size="ButtonSize.Small"
+                          Click="StartStopSimulate"
+                          @onclick:stopPropagation="true"
+                          title="@GetStartStopSimulatingButtonTitle()"
+                          Disabled="Server.Status != ServerStatus.Running" />
+
+            <RadzenButton Icon="content_copy"
+                          ButtonStyle="ButtonStyle.Info"
+                          Size="ButtonSize.Small"
+                          Click="DuplicateServer"
+                          @onclick:stopPropagation="true"
+                          title="Дублировать сервер"
+                          Disabled="Server.Status != ServerStatus.Running" />
+
+            <RadzenButton Icon="delete"
+                          ButtonStyle="ButtonStyle.Danger"
+                          Size="ButtonSize.Small"
+                          Click="RemoveServer"
+                          @onclick:stopPropagation="true"
+                          title="Удалить сервер" />
+        </div>
+
+    </div>
+
+</div>
+
+@code {
+    [Parameter] public ServerModel Server { get; set; } = default!;
+    [Parameter] public EventCallback<ServerModel> OnClick { get; set; }
+    [Parameter] public EventCallback<ServerModel> OnRemove { get; set; }
+    [Parameter] public EventCallback<ServerModel> OnStartStopServer { get; set; }
+    [Parameter] public EventCallback<ServerModel> OnStartStopSimulate { get; set; }
+    [Parameter] public EventCallback<ServerModel> OnDuplicate { get; set; }
+
+    private bool IsRunningServer() => Server.Status == ServerStatus.Running;
+    private bool IsSimulating() => Server.IsSimulating;
+
+    private string GetCardClass() => Server.Status switch
+    {
+        ServerStatus.Running => "running",
+        ServerStatus.Stopped => "stopped",
+        ServerStatus.Error => "error",
+        _ => "error"
+    };
+
+    private string GetStatusClass() => Server.Status switch
+    {
+        ServerStatus.Running => "status-running",
+        ServerStatus.Stopped => "status-stopped",
+        ServerStatus.Error => "status-error",
+        _ => "status-error"
+    };
+
+    private string GetStartStopServerIcon() => IsRunningServer() ? "stop" : "play_arrow";
+    private string GetStartStopServerTitle() => IsRunningServer() ? "Остановить сервер" : "Запустить сервер";
+
+    private ButtonStyle GetStartStopServerButtonStyle() =>
+        IsRunningServer() ? ButtonStyle.Success : ButtonStyle.Primary;
+
+    private string GetStartStopSimulatingIcon() => IsSimulating() ? "stop" : "play_arrow";
+    private string GetStartStopSimulatingButtonTitle() =>
+        IsSimulating() ? "Остановить симуляцию" : "Запустить симуляцию";
+
+    private ButtonStyle GetStartStopSimulatingButtonStyle() =>
+        IsSimulating() ? ButtonStyle.Dark : ButtonStyle.Secondary;
+
+    private async Task ClickServer() => await OnClick.InvokeAsync(Server);
+    private async Task RemoveServer() => await OnRemove.InvokeAsync(Server);
+    private async Task DuplicateServer() => await OnDuplicate.InvokeAsync(Server);
+    private async Task StartStopServer() => await OnStartStopServer.InvokeAsync(Server);
+    private async Task StartStopSimulate() => await OnStartStopSimulate.InvokeAsync(Server);
+}

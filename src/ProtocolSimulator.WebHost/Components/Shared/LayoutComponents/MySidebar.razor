@@ -1,0 +1,81 @@
+﻿<RadzenSidebar @bind-Expanded="@Expanded" class="app-sidebar" Style="@GetSidebarStyle()">
+
+    <!-- ВКЛАДКИ СЕРВЕРОВ -->
+    <RadzenTabs TabPosition="TabPosition.Top">
+        <Tabs>
+
+            <!-- ВКЛАДКА OPC UA -->
+            <RadzenTabsItem Text="OPC UA" Icon="settings_ethernet">
+                <MyServerTab Servers="@OpcServers"
+                             ServerType="ServerType.OpcUa"
+                             OnAdd="OnAddOpcUaServer"
+                             OnSelect="OnSelectServer"
+                             OnRemove="OnRemoveServer"
+                             OnStartStopServer="OnStartStopServer"
+                             OnStartStopSimulate="OnStartStopSimulate"
+                             OnDuplicate="OnDuplicateServer"
+                             OnStartAllServers="OnStartAllOpcServers"
+                             OnStopAllServers="OnStopAllOpcServers"
+                             OnStartAllSimulations="OnStartAllOpcSimulations"
+                             OnStopAllSimulations="OnStopAllOpcSimulations"
+                             OnDeleteAllServers="OnDeleteAllOpcServers" />
+            </RadzenTabsItem>
+
+            <!-- ВКЛАДКА MODBUS TCP -->
+            <RadzenTabsItem Text="ModBus TCP" Icon="lan">
+                <MyServerTab Servers="@ModbusServers"
+                             ServerType="ServerType.ModbusTcp"
+                             OnAdd="OnAddModbusServer"
+                             OnSelect="OnSelectServer"
+                             OnRemove="OnRemoveServer"
+                             OnStartStopServer="OnStartStopServer"
+                             OnStartStopSimulate="OnStartStopSimulate"
+                             OnDuplicate="OnDuplicateServer"
+                             OnStartAllServers="OnStartAllModbusServers"
+                             OnStopAllServers="OnStopAllModbusServers"
+                             OnStartAllSimulations="OnStartAllModbusSimulations"
+                             OnStopAllSimulations="OnStopAllModbusSimulations"
+                             OnDeleteAllServers="OnDeleteAllModbusServers" />
+            </RadzenTabsItem>
+
+        </Tabs>
+    </RadzenTabs>
+
+</RadzenSidebar>
+
+@code {
+    [Parameter] public bool Expanded { get; set; }
+    [Parameter] public EventCallback<bool> ExpandedChanged { get; set; }
+
+    [Parameter] public List<ServerModel> OpcServers { get; set; } = new();
+    [Parameter] public List<ServerModel> ModbusServers { get; set; } = new();
+
+    // Одиночные действия
+    [Parameter] public EventCallback OnAddOpcUaServer { get; set; }
+    [Parameter] public EventCallback OnAddModbusServer { get; set; }
+    [Parameter] public EventCallback<ServerModel> OnSelectServer { get; set; }
+    [Parameter] public EventCallback<ServerModel> OnRemoveServer { get; set; }
+    [Parameter] public EventCallback<ServerModel> OnStartStopServer { get; set; }
+    [Parameter] public EventCallback<ServerModel> OnStartStopSimulate { get; set; }
+    [Parameter] public EventCallback<ServerModel> OnDuplicateServer { get; set; }
+
+    // Массовые операции OPC UA
+    [Parameter] public EventCallback OnStartAllOpcServers { get; set; }
+    [Parameter] public EventCallback OnStopAllOpcServers { get; set; }
+    [Parameter] public EventCallback OnStartAllOpcSimulations { get; set; }
+    [Parameter] public EventCallback OnStopAllOpcSimulations { get; set; }
+    [Parameter] public EventCallback OnDeleteAllOpcServers { get; set; }
+
+    // Массовые операции Modbus
+    [Parameter] public EventCallback OnStartAllModbusServers { get; set; }
+    [Parameter] public EventCallback OnStopAllModbusServers { get; set; }
+    [Parameter] public EventCallback OnStartAllModbusSimulations { get; set; }
+    [Parameter] public EventCallback OnStopAllModbusSimulations { get; set; }
+    [Parameter] public EventCallback OnDeleteAllModbusServers { get; set; }
+
+    private string GetSidebarStyle()
+    {
+        var width = Expanded ? "450px" : "60px";
+        return $"width: {width}; flex-shrink: 0;";
+    }
+}

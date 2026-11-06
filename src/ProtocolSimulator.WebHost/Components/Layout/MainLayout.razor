@@ -1,20 +1,50 @@
 ﻿@inherits LayoutComponentBase
 
+@inject NavigationManager Navigation
+@inject ProtocolSimulator.Core.Services.ServerService ServerService
+
 <RadzenComponents @rendermode="InteractiveServer" />
+
+<MyLoader IsLoading="@_isLoading" />
 
 <RadzenLayout Style="height: 100vh; display: flex; flex-direction: column;">
 
-    <MyHeader @bind-SidebarExpanded="_sidebarExpanded" />
+    <MyHeader @bind-SidebarExpanded="_sidebarExpanded"
+              SimulatinServerCount="ServerService.SimulatinServerCount"
+              RunningServersCount="ServerService.RunningServerCount"
+              OpcServersCount="ServerService.OpcUaModels.Count"
+              ModbusServersCount="ServerService.ModbusModels.Count" />
 
     <div style="display: flex; flex: 1; overflow: hidden;">
 
-        <div style="width: 300px; background: #1a237e; color: #fff; flex-shrink: 0; padding: 1rem;">
-            @* Здесь будет Sidebar *@
-        </div>
+        <CascadingValue Value="this">
 
-        <div style="width: 100%; height: 100%; padding: 10px; overflow: auto;">
-            @Body
-        </div>
+            <MySidebar @bind-Expanded="_sidebarExpanded"
+                       OpcServers="ServerService.OpcUaModels"
+                       ModbusServers="ServerService.ModbusModels"
+                       OnAddOpcUaServer="AddOpcUaServer"
+                       OnAddModbusServer="AddModbusServer"
+                       OnSelectServer="SelectServer"
+                       OnRemoveServer="RemoveServer"
+                       OnStartStopServer="StartStopServer"
+                       OnStartStopSimulate="StartStopSimulate"
+                       OnDuplicateServer="DuplicateServer"
+                       OnStartAllOpcServers="OnStartAllOpcServers"
+                       OnStopAllOpcServers="OnStopAllOpcServers"
+                       OnStartAllOpcSimulations="OnStartAllOpcSimulations"
+                       OnStopAllOpcSimulations="OnStopAllOpcSimulations"
+                       OnDeleteAllOpcServers="OnDeleteAllOpcServers"
+                       OnStartAllModbusServers="OnStartAllModbusServers"
+                       OnStopAllModbusServers="OnStopAllModbusServers"
+                       OnStartAllModbusSimulations="OnStartAllModbusSimulations"
+                       OnStopAllModbusSimulations="OnStopAllModbusSimulations"
+                       OnDeleteAllModbusServers="OnDeleteAllModbusServers" />
+
+            <div style="width: 100%; height: 100%; padding: 10px; overflow: auto;">
+                @Body
+            </div>
+
+        </CascadingValue>
 
     </div>
 
@@ -29,5 +59,189 @@
 </div>
 
 @code {
+    private bool _isLoading;
     private bool _sidebarExpanded = true;
+
+    // ===== Одиночные действия =====
+
+    private async Task AddOpcUaServer()
+    {
+        await Execute(async () => await ServerService.CreateServerAsync(ServerType.OpcUa));
+    }
+
+    private async Task AddModbusServer()
+    {
+        await Execute(async () => await ServerService.CreateServerAsync(ServerType.ModbusTcp));
+    }
+
+    private async Task SelectServer(ServerModel server)
+    {
+        await Execute(async () =>
+        {
+            if (server.Type == ServerType.OpcUa)
+                Navigation.NavigateTo($"/ServerOpcUa?id={server.Id}");
+            else if (server.Type == ServerType.ModbusTcp)
+                Navigation.NavigateTo($"/ServerModBusTcp?id={server.Id}");
+        });
+    }
+
+    private async Task StartStopServer(ServerModel server)
+    {
+        await Execute(async () => await ServerService.StartStopServer(server));
+    }
+
+    private async Task StartStopSimulate(ServerModel server)
+    {
+        await Execute(async () => await ServerService.StartStopStopSimulation(server));
+    }
+
+    private async Task RemoveServer(ServerModel server)
+    {
+        await Execute(async () =>
+        {
+            await ServerService.RemoveServers(new List<ServerModel> { server });
+        });
+        Navigation.NavigateTo("/");
+    }
+
+    private async Task DuplicateServer(ServerModel server)
+    {
+        await Execute(async () =>
+        {
+            // Заглушка: копирование серверов будет реализовано позже.
+            // Сейчас просто создаём пустой дубликат.
+            var newId = await ServerService.CreateServerAsync(server.Type);
+            await ServerService.RefreshModels();
+        });
+    }
+
+    // ===== Массовые действия OPC UA =====
+
+    private async Task OnStartAllOpcServers()
+    {
+        await Execute(async () =>
+        {
+            var tasks = ServerService.OpcUaModels
+                .Where(s => s.Status != ServerStatus.Running)
+                .Select(s => ServerService.StartStopServer(s));
+            await Task.WhenAll(tasks);
+        });
+    }
+
+    private async Task OnStopAllOpcServers()
+    {
+        await Execute(async () =>
+        {
+            var tasks = ServerService.OpcUaModels
+                .Where(s => s.Status == ServerStatus.Running)
+                .Select(s => ServerService.StartStopServer(s));
+            await Task.WhenAll(tasks);
+        });
+    }
+
+    private async Task OnStartAllOpcSimulations()
+    {
+        await Execute(async () =>
+        {
+            var tasks = ServerService.OpcUaModels
+                .Where(s => s.Status == ServerStatus.Running && !s.IsSimulating)
+                .Select(s => ServerService.StartStopStopSimulation(s));
+            await Task.WhenAll(tasks);
+        });
+    }
+
+    private async Task OnStopAllOpcSimulations()
+    {
+        await Execute(async () =>
+        {
+            var tasks = ServerService.OpcUaModels
+                .Where(s => s.IsSimulating)
+                .Select(s => ServerService.StartStopStopSimulation(s));
+            await Task.WhenAll(tasks);
+        });
+    }
+
+    private async Task OnDeleteAllOpcServers()
+    {
+        await Execute(async () =>
+        {
+            await ServerService.RemoveServers(ServerService.OpcUaModels);
+        });
+    }
+
+    // ===== Массовые действия Modbus =====
+
+    private async Task OnStartAllModbusServers()
+    {
+        await Execute(async () =>
+        {
+            var tasks = ServerService.ModbusModels
+                .Where(s => s.Status != ServerStatus.Running)
+                .Select(s => ServerService.StartStopServer(s));
+            await Task.WhenAll(tasks);
+        });
+    }
+
+    private async Task OnStopAllModbusServers()
+    {
+        await Execute(async () =>
+        {
+            var tasks = ServerService.ModbusModels
+                .Where(s => s.Status == ServerStatus.Running)
+                .Select(s => ServerService.StartStopServer(s));
+            await Task.WhenAll(tasks);
+        });
+    }
+
+    private async Task OnStartAllModbusSimulations()
+    {
+        await Execute(async () =>
+        {
+            var tasks = ServerService.ModbusModels
+                .Where(s => s.Status == ServerStatus.Running && !s.IsSimulating)
+                .Select(s => ServerService.StartStopStopSimulation(s));
+            await Task.WhenAll(tasks);
+        });
+    }
+
+    private async Task OnStopAllModbusSimulations()
+    {
+        await Execute(async () =>
+        {
+            var tasks = ServerService.ModbusModels
+                .Where(s => s.IsSimulating)
+                .Select(s => ServerService.StartStopStopSimulation(s));
+            await Task.WhenAll(tasks);
+        });
+    }
+
+    private async Task OnDeleteAllModbusServers()
+    {
+        await Execute(async () =>
+        {
+            await ServerService.RemoveServers(ServerService.ModbusModels);
+        });
+    }
+
+    // ===== Общие методы =====
+
+    public async Task RefreshSidebarAsync()
+    {
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public async Task Execute(Func<Task> action)
+    {
+        _isLoading = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            await action();
+        }
+        finally
+        {
+            _isLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
 }
