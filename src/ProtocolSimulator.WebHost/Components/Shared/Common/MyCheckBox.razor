@@ -1,9 +1,7 @@
-﻿<div style="display: flex; align-items: center; gap: @Gap;">
-    <RadzenCheckBox TValue="bool"
-                    @bind-Value="@Value"
-                    Disabled="@Disabled" />
-    <RadzenLabel Text="@LabelText" />
-</div>
+﻿<label style="display: inline-flex; align-items: center; gap: @Gap; cursor: pointer; user-select: none; width: fit-content;">
+    <RadzenCheckBox TValue="bool" @bind-Value="@Value" Disabled="@Disabled" />
+    <span style="white-space: nowrap;">@LabelText</span>
+</label>
 
 @code {
     [Parameter]

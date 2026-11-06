@@ -9,10 +9,6 @@
   <ItemGroup>
     <Content Remove="Components\Pages\ServerModBusTcp.razor" />
     <Content Remove="Components\Pages\ServerOpcUa.razor" />
-    <Content Remove="Components\Shared\Common\CheckboxWithLabel.razor" />
-    <Content Remove="Components\Shared\Common\Loader.razor" />
-    <Content Remove="Components\Shared\Common\Separator.razor" />
-    <Content Remove="Components\Shared\Common\VerticalSeparator.razor" />
     <Content Remove="Components\Shared\Dialogs\ConfirmDialog.razor" />
     <Content Remove="Components\Shared\Dialogs\DuplicateServerDialog.razor" />
     <Content Remove="Components\Shared\Dialogs\FolderDialog.razor" />
@@ -39,7 +35,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Components\Shared\Common\" />
     <Folder Include="Components\Shared\Dialogs\" />
   </ItemGroup>
 
